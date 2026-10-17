@@ -176,7 +176,9 @@ function buildReview(rec, raw) {
         item.loss = mine === null ? null : Math.max(0, best - mine);
         item.rating = item.loss === null ? 'unknown' : rate(item.loss);
         item.playedIndex = idx;
-        item.options = an.moves.slice(0, 5).map(m => ({ ...convertMove(m.move, t.pos, pl), eq: m.score, probs: m.probs }));
+        const opt = (m, rank) => ({ ...convertMove(m.move, t.pos, pl), eq: m.score, probs: m.probs, rank });
+        item.options = an.moves.slice(0, 5).map((m, i) => opt(m, i + 1));
+        if (idx >= 5) item.options.push(opt(an.moves[idx], idx + 1));   // keep the played move's numbers
         if (item.loss !== null) count(pl, item.rating, item.loss);
       } else item.rating = t.plays.length ? 'forced' : 'no-move';
       // Pre-roll cube check: was this a missed double?

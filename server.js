@@ -16,6 +16,7 @@ const io = new Server(server);
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/shared', express.static(path.join(__dirname, 'shared')));
 app.get('/t/:id', (req, res) => res.sendFile(path.join(__dirname, 'public', 'table.html')));
+app.get('/review/:id', (req, res) => res.sendFile(path.join(__dirname, 'public', 'review.html')));
 app.get('/healthz', (req, res) => res.send('ok'));
 
 /* ---------- game records + analysis ---------- */
