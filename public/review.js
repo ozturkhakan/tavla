@@ -125,19 +125,56 @@ function renderEval() {
   $('#evalTop').textContent = Math.round((1 - wB) * 100);
   $('#evalBot').textContent = Math.round(wB * 100);
 }
-function graphSVG() {
-  const W = 300, H = 90, n = frames.length - 1;
-  const x = i => (i / n) * W, y = f => (1 - f.winW) * H;
-  let d = `M0 ${H} ` + frames.map((f, i) => `L${x(i).toFixed(1)} ${y(f).toFixed(1)}`).join(' ') + ` L${W} ${H} Z`;
-  let dots = '';
-  frames.forEach((f, i) => {
-    const r = f.item && (f.item.rating || '');
-    if (['mistake', 'blunder'].includes(r)) dots += `<circle cx="${x(i)}" cy="${y(f)}" r="3.2" fill="${RT[r].color}" stroke="#262522" stroke-width="1"/>`;
-  });
-  return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" id="graphSvg">
-    <path d="${d}" fill="#f1ece2"/><line x1="0" x2="${W}" y1="${H / 2}" y2="${H / 2}" stroke="#8b8987" stroke-width=".6" stroke-dasharray="3 3"/>
-    ${dots}<line id="gcur" x1="0" x2="0" y1="0" y2="${H}" stroke="#81b64c" stroke-width="2"/></svg>`;
+/* ---------- winning-chances graph (drawn at real pixel size so markers stay round) ---------- */
+const GH = 96, GPAD = 8;
+let GW = 300;
+const gx = i => (i / (frames.length - 1)) * GW;
+const gy = w => GPAD + (1 - w) * (GH - 2 * GPAD);
+const n1 = v => v.toFixed(1);
+function smoothPath(pts) {   // Catmull-Rom through the points, as cubic Béziers
+  const cy = v => Math.max(GPAD, Math.min(GH - GPAD, v));
+  let d = `M${n1(pts[0][0])} ${n1(pts[0][1])}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
+    d += ` C${n1(p1[0] + (p2[0] - p0[0]) / 6)} ${n1(cy(p1[1] + (p2[1] - p0[1]) / 6))} ${n1(p2[0] - (p3[0] - p1[0]) / 6)} ${n1(cy(p2[1] - (p3[1] - p1[1]) / 6))} ${n1(p2[0])} ${n1(p2[1])}`;
+  }
+  return d;
 }
+function drawGraph() {
+  const box = $('#graph'); if (!box) return;
+  GW = box.clientWidth || 300;
+  const line = smoothPath(frames.map((f, i) => [gx(i), gy(f.winW)]));
+  let marks = '';
+  frames.forEach((f, i) => {
+    const r = f.item && f.item.rating;
+    if (r === 'blunder' || r === 'mistake') marks += `<circle cx="${n1(gx(i))}" cy="${n1(gy(f.winW))}" r="${r === 'blunder' ? 3.5 : 2.6}" fill="${RT[r].color}" stroke="#2b2926" stroke-width="1.5"/>`;
+  });
+  box.innerHTML = `<svg width="${GW}" height="${GH}" viewBox="0 0 ${GW} ${GH}" id="graphSvg">
+    <path d="${line} L${GW} ${GH} L0 ${GH} Z" fill="#ebe6dc"/>
+    <line x1="0" x2="${GW}" y1="${GH / 2}" y2="${GH / 2}" stroke="#8b8987" stroke-opacity=".5" stroke-dasharray="2 4"/>
+    <path d="${line}" fill="none" stroke="#fff" stroke-width="1.5"/>
+    <line id="ghover" y1="0" y2="${GH}" stroke="#fff" stroke-opacity=".35" visibility="hidden"/>
+    ${marks}
+    <g id="gcur"><line y1="0" y2="${GH}" stroke="#81b64c" stroke-width="2"/><circle r="4.5" fill="#81b64c" stroke="#262522" stroke-width="2"/></g>
+  </svg><div class="gtip" id="gtip" hidden></div>`;
+  const svg = $('#graphSvg');
+  const at = e => Math.max(0, Math.min(frames.length - 1, Math.round(((e.clientX - svg.getBoundingClientRect().left) / GW) * (frames.length - 1))));
+  svg.addEventListener('click', e => go(at(e)));
+  svg.addEventListener('mousemove', e => {
+    const i = at(e), f = frames[i], tip = $('#gtip'), hv = $('#ghover');
+    hv.setAttribute('x1', gx(i)); hv.setAttribute('x2', gx(i)); hv.setAttribute('visibility', 'visible');
+    tip.hidden = false; tip.style.left = `${gx(i)}px`;
+    tip.textContent = `${f.kind === 'start' ? 'Start' : f.kind === 'end' ? 'End' : `Turn ${f.turn}`} · ${RV.players.w} ${Math.round(f.winW * 100)}%`;
+  });
+  svg.addEventListener('mouseleave', () => { $('#gtip').hidden = true; $('#ghover').setAttribute('visibility', 'hidden'); });
+  moveGraphCursor();
+}
+function moveGraphCursor() {
+  const g = $('#gcur'); if (!g || !frames[idx]) return;
+  g.setAttribute('transform', `translate(${n1(gx(idx))},0)`);
+  g.querySelector('circle').setAttribute('cy', n1(gy(frames[idx].winW)));
+}
+window.addEventListener('resize', () => { if (RV) drawGraph(); });
 function renderSummary() {
   const s = RV.stats;
   const r = RV.result;
@@ -154,15 +191,12 @@ function renderSummary() {
       <div class="crow"><span class="c">${s.w.luck > 0 ? '+' : ''}${s.w.luck.toFixed(2)}</span><span class="rlabel" style="color:var(--muted)">Luck</span><span class="c">${s.r.luck > 0 ? '+' : ''}${s.r.luck.toFixed(2)}</span></div>
     </div>
     <div class="sec">Winning chances · ${name('w')} (light)</div>
-    <div class="graph">${graphSVG()}</div>
+    <div class="graph" id="graph"></div>
     <div class="coach" id="coach"></div>
     <div class="sec">Moves</div>
     <div class="rv-moves" id="rvMoves"></div>
     <div class="empty" style="padding:8px 14px 18px">Analysed by GNU Backgammon (${RV.plies}-ply). Equity is the expected points won; PR is average equity lost per decision × 500.</div>`;
-  $('#graphSvg').addEventListener('click', e => {
-    const r = e.currentTarget.getBoundingClientRect();
-    go(Math.round(((e.clientX - r.left) / r.width) * (frames.length - 1)));
-  });
+  drawGraph();
   $('#rvMoves').innerHTML = frames.map((f, i) => {
     if (!f.item) return '';
     const it = f.item;
@@ -220,7 +254,7 @@ function go(i) {
     const top = cur.offsetTop;   // .rv-moves is position:relative, so this is already relative to the box
     if (top < box.scrollTop || top + cur.offsetHeight > box.scrollTop + box.clientHeight) box.scrollTop = top - box.clientHeight / 2;
   }
-  const g = $('#gcur'); if (g) { const x = (idx / (frames.length - 1)) * 300; g.setAttribute('x1', x); g.setAttribute('x2', x); }
+  moveGraphCursor();
   const f = frames[idx];
   $('#posLabel').textContent = f.kind === 'start' ? 'Start' : f.kind === 'end' ? 'Final position' : `Turn ${f.turn}`;
 }

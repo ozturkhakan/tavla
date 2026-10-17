@@ -316,8 +316,9 @@ button:disabled{cursor:default}
 .crow .name{grid-column:2;}
 .rbadge{width:20px;height:20px;border-radius:50%;display:inline-grid;place-items:center;font:900 10.5px/1 var(--font);color:#fff;flex:none;letter-spacing:-.04em}
 .rlabel{display:flex;align-items:center;gap:7px;justify-content:center;font-size:12.5px}
-.graph{padding:6px 14px 2px}
-.graph svg{display:block;width:100%;height:90px;border-radius:6px;background:#403d39;cursor:pointer}
+.graph{position:relative;margin:6px 14px 2px;height:96px;border-radius:8px;overflow:visible}
+.graph svg{display:block;border-radius:8px;background:#3a3734;cursor:pointer;box-shadow:inset 0 0 0 1px rgba(255,255,255,.04)}
+.gtip{position:absolute;top:-6px;transform:translate(-50%,-100%);background:#fff;color:#312e2b;font:700 11px/1 var(--font);padding:5px 8px;border-radius:5px;pointer-events:none;white-space:nowrap;box-shadow:0 4px 12px rgba(0,0,0,.35);z-index:2}
 .coach{margin:10px 14px;border-radius:10px;background:#2b2926;padding:12px 14px;border-left:4px solid var(--c, #6e6c6a)}
 .coach .head{display:flex;align-items:center;gap:9px;font-weight:700;font-size:14.5px}
 .coach .head .rbadge{width:26px;height:26px;font-size:12px}
