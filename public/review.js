@@ -48,9 +48,12 @@ function buildFrames(rv) {
     if (it.type === 'move') {
       turn++;
       cube = it.cube || cube;
-      if (it.probs) winW = it.pl === 'w' ? it.probs[0] : 1 - it.probs[0];
+      if (it.probs) winW = it.pl === 'w' ? it.probs[0] : 1 - it.probs[0];   // pre-roll chances (not every gnubg build sends them)
       out.push({ kind: 'move', item: it, pos: it.pos, cube, winW, turn });
       pos = applyPlays(it.pos, it.pl, it.played.plays);
+      // Chances after the played move (mover's view) carry into the next frame.
+      const mine = (it.options || []).find(o => o.rank === it.playedIndex + 1);
+      if (mine) winW = it.pl === 'w' ? mine.probs[0] : 1 - mine.probs[0];
     } else {
       out.push({ kind: it.type, item: it, pos, cube, winW, turn });
       if (it.type === 'take') cube = { v: cube.v * 2, owner: it.pl };
@@ -214,7 +217,7 @@ function go(i) {
   document.querySelectorAll('.rv-row').forEach(r => r.classList.toggle('cur', +r.dataset.i === idx));
   const cur = document.querySelector('.rv-row.cur'), box = $('#rvMoves');
   if (cur && box) {   // keep the current row visible inside the move list without scrolling the panel
-    const top = cur.offsetTop - box.offsetTop;
+    const top = cur.offsetTop;   // .rv-moves is position:relative, so this is already relative to the box
     if (top < box.scrollTop || top + cur.offsetHeight > box.scrollTop + box.clientHeight) box.scrollTop = top - box.clientHeight / 2;
   }
   const g = $('#gcur'); if (g) { const x = (idx / (frames.length - 1)) * 300; g.setAttribute('x1', x); g.setAttribute('x2', x); }
