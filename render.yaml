@@ -1,8 +1,12 @@
 services:
   - type: web
     name: tavla
-    runtime: node
+    runtime: docker
     plan: free
-    buildCommand: npm install
-    startCommand: npm start
+    dockerfilePath: ./Dockerfile
     healthCheckPath: /healthz
+    envVars:
+      # The free plan has a small CPU share: 0-ply keeps analysis to well under a minute.
+      # Raise to 2 (much stronger, ~10x slower) on a paid instance.
+      - key: ANALYSIS_PLIES
+        value: "0"

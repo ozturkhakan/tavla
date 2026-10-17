@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const express = require('express');
 const { Server } = require('socket.io');
 const R = require('./shared/rules');
+const games = require('./games');
 
 const PORT = process.env.PORT || 3000;
 const app = express();
@@ -16,6 +17,20 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/shared', express.static(path.join(__dirname, 'shared')));
 app.get('/t/:id', (req, res) => res.sendFile(path.join(__dirname, 'public', 'table.html')));
 app.get('/healthz', (req, res) => res.send('ok'));
+
+/* ---------- game records + analysis ---------- */
+app.get('/api/games/:id', (req, res) => {
+  const rec = games.loadRecord(req.params.id);
+  rec ? res.json(rec) : res.status(404).json({ error: 'Game not found' });
+});
+app.get('/api/games/:id/analysis', (req, res) => {
+  const a = games.getAnalysis(req.params.id);
+  res.status(a.status === 'missing' ? 404 : 200).json(a);
+});
+app.post('/api/games/:id/analysis', (req, res) => {
+  const a = games.requestAnalysis(req.params.id);
+  res.status(a.status === 'missing' ? 404 : 202).json(a);
+});
 
 /* ---------- rooms ---------- */
 const rooms = new Map();
@@ -83,17 +98,25 @@ function startGame(room) {
   const g = Object.assign(R.newPosition(), {
     turn: null, phase: 'move', cube: { v: 1, owner: null }, pendingDouble: null,
     history: [], undo: [], hl: [], result: null, noMoves: false,
+    id: games.newGameId(), startScore: { ...room.score }, log: [],
   });
   // Opening roll: each side throws one die, higher die moves first using both.
   let a, b;
   do { a = R.die(); b = R.die(); } while (a === b);
   g.turn = a > b ? 'w' : 'r';
-  g.dice = R.diceFor(a, b);
-  g.history.push({ pl: g.turn, dice: [a, b], moves: [] });
   room.g = g;
+  beginTurn(g, g.turn, a, b);
   sys(room, `Game ${room.gameNo} — opening roll: <b>${nameOf(room, 'w')}</b> ${a}, <b>${nameOf(room, 'r')}</b> ${b}. <b>${nameOf(room, g.turn)}</b> starts.`);
   runClock(room, g.turn);
   afterRoll(room);
+}
+
+// New dice for `pl`: shown in the move list (history) and recorded with the position for later analysis (log).
+function beginTurn(g, pl, a, b) {
+  g.dice = R.diceFor(a, b);
+  const h = { pl, dice: [a, b], moves: [], plays: [] };
+  g.history.push(h);
+  g.log.push({ type: 'move', h, pos: games.snapshot(g), cube: { ...g.cube } });
 }
 
 function afterRoll(room) {
@@ -123,6 +146,7 @@ function finishGame(room, winner, points, reason) {
   g.phase = 'over';
   g.pendingDouble = null;
   g.result = { winner, points, reason, matchOver: room.matchOver };
+  try { games.saveRecord(room); g.result.gameId = g.id; } catch (e) { console.error('save game', e); }
   const how = { single: 'single game', gammon: 'gammon', backgammon: 'backgammon', resign: 'resignation', drop: 'declined double', time: 'time' }[reason];
   sys(room, `<b>${nameOf(room, winner)}</b> wins ${points ? `${points} point${points > 1 ? 's' : ''} ` : ''}by ${how}. Score ${room.score.w}–${room.score.r}.`);
 }
@@ -130,7 +154,7 @@ function finishGame(room, winner, points, reason) {
 /* ---------- state sent to clients ---------- */
 function publicState(room) {
   const seat = pl => room.seats[pl] && { name: room.seats[pl].name, connected: room.seats[pl].sockets.size > 0 };
-  const g = room.g && { ...room.g, undo: undefined, undoCount: room.g.undo.length };
+  const g = room.g && { ...room.g, undo: undefined, log: undefined, undoCount: room.g.undo.length };
   return {
     id: room.id, settings: room.settings, score: room.score, matchOver: room.matchOver, gameNo: room.gameNo,
     seats: { w: seat('w'), r: seat('r') }, spectators: [...room.specs.values()],
@@ -186,10 +210,8 @@ io.on('connection', socket => {
 
   socket.on('roll', act(({ room, seat, g }) => {
     if (seat !== g.turn || g.phase !== 'roll') return false;
-    const a = R.die(), b = R.die();
-    g.dice = R.diceFor(a, b);
     g.hl = [];
-    g.history.push({ pl: seat, dice: [a, b], moves: [] });
+    beginTurn(g, seat, R.die(), R.die());
     g.phase = 'move';
     afterRoll(room);
   }));
@@ -203,7 +225,9 @@ io.on('connection', socket => {
     if (!m) return false;
     g.undo.push(JSON.stringify({ board: g.board, bar: g.bar, off: g.off, dice: g.dice, hl: g.hl }));
     const note = R.applyMove(g, seat, from, to, m.idx);
-    g.history[g.history.length - 1].moves.push(note);
+    const h = g.history[g.history.length - 1];
+    h.moves.push(note);
+    h.plays.push([from, to, note.endsWith('*')]);
     g.hl.push(from, to);
     if (g.off[seat] === 15) {
       const kind = R.winKind(g, seat);
@@ -216,13 +240,16 @@ io.on('connection', socket => {
   socket.on('undo', act(({ seat, g }) => {
     if (seat !== g.turn || g.phase !== 'move' || !g.undo.length) return false;
     Object.assign(g, JSON.parse(g.undo.pop()));
-    g.history[g.history.length - 1].moves.pop();
+    const h = g.history[g.history.length - 1];
+    h.moves.pop();
+    h.plays.pop();
   }));
 
   socket.on('double', act(({ room, seat, g }) => {
     if (seat !== g.turn || g.phase !== 'roll' || g.cube.owner === R.OPP[seat] || g.cube.v >= 64) return false;
     g.phase = 'double';
     g.pendingDouble = seat;
+    g.log.push({ type: 'double', pl: seat, cube: g.cube.v * 2 });
     runClock(room, R.OPP[seat]);
     sys(room, `<b>${nameOf(room, seat)}</b> offers a double to ×${g.cube.v * 2}`);
   }));
@@ -230,6 +257,7 @@ io.on('connection', socket => {
   socket.on('answerDouble', act(({ room, seat, g }, accept) => {
     if (g.phase !== 'double' || seat !== R.OPP[g.pendingDouble]) return false;
     const offerer = g.pendingDouble;
+    g.log.push({ type: accept ? 'take' : 'drop', pl: seat });
     if (accept) {
       g.cube = { v: g.cube.v * 2, owner: seat };
       g.phase = 'roll';
@@ -244,6 +272,7 @@ io.on('connection', socket => {
   socket.on('resign', act(({ room, seat, g }, level) => {
     level = [1, 2, 3].includes(level) ? level : 1;
     if (!seat || g.phase === 'over') return false;
+    g.log.push({ type: 'resign', pl: seat, level, phase: g.phase });
     finishGame(room, R.OPP[seat], level * g.cube.v, 'resign');
   }));
 
@@ -279,6 +308,7 @@ setInterval(() => {
     const pl = room.clock.running;
     if (pl && room.g && room.g.phase !== 'over' && remaining(room, pl) <= 0) {
       room.clock[pl] = 0;
+      room.g.log.push({ type: 'timeout', pl, phase: room.g.phase });
       finishGame(room, R.OPP[pl], 0, 'time');
       broadcast(room);
     }
