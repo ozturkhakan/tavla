@@ -1,0 +1,763 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tavla — Backgammon</title>
+<style>
+:root{
+  --bg:#312e2b; --nav:#262421; --panel:#262522; --panel-2:#21201d; --row:#2b2926; --hover:#3c3a37; --line:#3d3a37;
+  --text:#ffffff; --text-2:#e0e0e0; --muted:#989795; --faint:#6e6c6a;
+  --green:#81b64c; --green-hi:#a3d160; --green-lo:#45753c;
+  --yellow:#f7f769; --red:#e02828;
+  --font:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Helvetica,Arial,sans-serif;
+  /* pieces */
+  --cw-1:#ffffff; --cw-2:#f1f1f1; --cw-3:#c9c9c9; --cw-edge:#3a3836; --cw-ink:#312e2b;
+  --cr-1:#5d5a56; --cr-2:#3a3835; --cr-3:#1c1b19; --cr-edge:#0d0c0b; --cr-ink:#ffffff;
+  color-scheme:dark;
+}
+body[data-pieces="ivory"]{--cw-1:#fffbf1;--cw-2:#f2e7cf;--cw-3:#cdb994;--cw-edge:#7a6446;--cw-ink:#3b2a1a;
+  --cr-1:#5e5650;--cr-2:#2b2623;--cr-3:#0e0c0b;--cr-edge:#b59a6e;--cr-ink:#f2e7cf}
+body[data-pieces="ruby"]{--cr-1:#ff7d70;--cr-2:#d8322a;--cr-3:#8f130e;--cr-edge:#5c0b07}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;font:14px/1.4 var(--font);color:var(--text);background:var(--bg);-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none;padding:0}
+button:disabled{cursor:default}
+
+.shell{display:grid;grid-template-columns:148px minmax(0,1fr);min-height:100vh}
+
+/* ---------- left nav ---------- */
+.nav{background:var(--nav);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;padding:6px 0}
+.logo{display:flex;align-items:center;gap:8px;padding:10px 14px 14px;font-weight:800;font-size:21px;letter-spacing:-.02em}
+.logo-mark{width:30px;height:30px;border-radius:6px;background:var(--green);display:grid;place-items:center;box-shadow:inset 0 -3px 0 var(--green-lo)}
+.logo span{color:var(--green)}
+.nav a{display:flex;align-items:center;gap:12px;padding:10px 14px;color:var(--text-2);font-weight:700;font-size:15px;text-decoration:none;cursor:pointer}
+.nav a:hover{background:#1c1b19;color:#fff}
+.nav a.on{color:#fff}
+.nav a svg{flex:none;color:var(--muted)}
+.nav a.on svg{color:var(--green)}
+.nav .grow{flex:1}
+.nav .small{font-size:13px;font-weight:600;color:var(--muted)}
+
+/* ---------- main ---------- */
+.main{display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:24px;padding:16px 24px;align-items:start;max-width:1500px}
+.stage{justify-self:center;width:min(100%, calc((100vh - 140px) * 1.5152));min-width:0;display:flex;flex-direction:column;gap:8px}
+
+.pbar{display:flex;align-items:center;gap:10px;height:48px}
+.avatar{width:40px;height:40px;border-radius:4px;display:grid;place-items:center;font-weight:800;font-size:18px;flex:none;position:relative;overflow:hidden}
+.avatar.w{background:#e8e6e3;color:#312e2b}
+.avatar.r{background:#5b5855;color:#fff}
+.avatar svg{position:absolute;bottom:-6px;opacity:.5}
+.pinfo{min-width:0;flex:1;display:flex;flex-direction:column;justify-content:center}
+.pline{display:flex;align-items:center;gap:6px;font-weight:700;font-size:15px;white-space:nowrap}
+.pline .rt{color:var(--muted);font-weight:400}
+.pline .flag{font-size:13px}
+.pline .badge{font-size:10px;font-weight:800;background:var(--green-lo);color:#dfeccb;padding:1px 5px;border-radius:3px;letter-spacing:.03em}
+.psub{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:12.5px;margin-top:1px;white-space:nowrap}
+.psub b{color:var(--text-2);font-weight:600}
+.offpile{display:inline-flex;align-items:center;gap:1px}
+.offpile i{width:5px;height:11px;border-radius:1.5px;display:inline-block}
+.offpile.w i{background:#ececec}.offpile.r i{background:var(--cr-2);box-shadow:0 0 0 1px #777 inset}
+.score{font-weight:800;font-size:15px;color:var(--text-2);background:#3c3a37;border-radius:4px;padding:5px 10px;min-width:36px;text-align:center}
+.clock{height:44px;min-width:128px;border-radius:5px;display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:0 12px;
+  background:#2b2926;color:#8b8987;font:700 25px/1 var(--font);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.clock svg{opacity:0;width:16px}
+.clock.active{background:#fff;color:#312e2b}
+.clock.active svg{opacity:.6;animation:tick 1s steps(8) infinite}
+.clock.dark.active{background:#ffffff}
+.clock.low.active{background:var(--red);color:#fff}
+@keyframes tick{to{transform:rotate(360deg)}}
+
+/* ---------- board ---------- */
+.board-wrap{position:relative;container-type:inline-size;border-radius:6px;overflow:hidden;box-shadow:0 4px 0 rgba(0,0,0,.25)}
+.board-wrap svg{display:block;width:100%;height:auto;user-select:none}
+.board-wrap{--grain:0;--pt-edge:transparent}
+.board-wrap[data-theme="traditional"]{--felt-1:#e8d4ab;--felt-2:#dcc597;--pa:#9a1c1c;--pb:#1c1815;--frame:#6b3a1e;--frame-2:#4f2914;--num:#f0dcb4;--grain:.8;--pt-edge:rgba(40,20,10,.35)}
+.board-wrap[data-theme="brown"]{--felt-1:#b58863;--felt-2:#a87c58;--pa:#f0d9b5;--pb:#7a4f30;--frame:#2a2016;--frame-2:#3a2c1f;--num:#d8bf9c}
+.board-wrap[data-theme="blue"]{--felt-1:#4b7399;--felt-2:#43698d;--pa:#eae9d2;--pb:#2a4a69;--frame:#1e232a;--frame-2:#28303a;--num:#9db3c9}
+.board-wrap[data-theme="gray"]{--felt-1:#8a8a8a;--felt-2:#7d7d7d;--pa:#e6e6e6;--pb:#555555;--frame:#232323;--frame-2:#2f2f2f;--num:#bdbdbd}
+.hit{fill:transparent;cursor:pointer}
+.hl{fill:var(--yellow);opacity:.55}
+.hl.last{opacity:.38}
+.dot{fill:rgba(0,0,0,.2)}
+.capture{fill:none;stroke:rgba(0,0,0,.22);stroke-width:6}
+#board{touch-action:none}
+#board.dragging,#board.dragging .hit{cursor:grabbing}
+.drop{fill:rgba(255,255,255,.14);stroke:rgba(255,255,255,.9);stroke-width:4;stroke-linejoin:round}
+.lifted-ghost{opacity:.3}
+#dragChk{filter:drop-shadow(0 10px 8px rgba(0,0,0,.45))}
+.chk-enter{animation:pop .2s ease-out}
+@keyframes pop{from{transform:scale(.8)}}
+
+.dice{position:absolute;left:69.2%;top:50%;transform:translate(-50%,-50%);display:flex;gap:1.2cqw;align-items:center}
+.die{width:5.4cqw;height:5.4cqw;border-radius:.9cqw;display:grid;grid-template:repeat(3,1fr)/repeat(3,1fr);padding:.8cqw;transition:opacity .2s,transform .2s;
+  box-shadow:0 .45cqw 0 rgba(0,0,0,.35)}
+.die.w{background:#fff;box-shadow:0 .45cqw 0 #b9b7b4}
+.die.r{background:var(--cr-2);box-shadow:0 .45cqw 0 var(--cr-edge)}
+.die i{width:70%;height:70%;border-radius:50%;place-self:center;visibility:hidden}
+.die.w i{background:#312e2b}.die.r i{background:#fff}
+.die i.on{visibility:visible}
+.die.used{opacity:.35;transform:scale(.88)}
+.die.small{width:4.2cqw;height:4.2cqw;padding:.6cqw}
+.die.rolling{animation:tumble .6s cubic-bezier(.2,.7,.3,1)}
+@keyframes tumble{0%{transform:translateY(-2.5cqw) rotate(-180deg) scale(.7);opacity:0}70%{transform:rotate(8deg)}100%{transform:none}}
+
+.btn-green{display:flex;align-items:center;justify-content:center;gap:10px;border-radius:8px;font-weight:800;color:#fff;background:var(--green);
+  box-shadow:inset 0 -4px 0 var(--green-lo), 0 6px 14px -6px rgba(0,0,0,.5);text-shadow:0 1px 0 rgba(0,0,0,.25);transition:background .12s}
+.btn-green:not(:disabled):hover{background:var(--green-hi)}
+.btn-green:not(:disabled):active{box-shadow:inset 0 -2px 0 var(--green-lo);transform:translateY(2px)}
+.btn-green:disabled{background:#4b4946;box-shadow:inset 0 -4px 0 #3a3835;color:#a09e9b;text-shadow:none}
+.roll-btn{padding:1.2cqw 2.6cqw;font-size:clamp(12px,1.8cqw,20px);white-space:nowrap}
+.board-note{position:absolute;left:22.8%;top:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.65);color:#fff;font-weight:700;
+  padding:.9cqw 1.8cqw;border-radius:6px;font-size:clamp(11px,1.5cqw,15px);white-space:nowrap;pointer-events:none}
+
+/* game over modal */
+.overlay{position:absolute;inset:0;display:grid;place-items:center;background:rgba(0,0,0,.35)}
+.modal{width:min(320px,86%);border-radius:10px;overflow:hidden;background:var(--panel);box-shadow:0 20px 50px rgba(0,0,0,.6);animation:pop .2s ease-out;text-align:center}
+.modal header{padding:16px 16px 12px;background:var(--green);color:#fff;position:relative}
+.modal header.loss{background:#5b5855}
+.modal header h2{margin:0;font-size:24px;font-weight:800;text-shadow:0 1px 0 rgba(0,0,0,.25)}
+.modal header p{margin:2px 0 0;font-size:13px;opacity:.9}
+.modal .vs{display:flex;align-items:center;justify-content:center;gap:16px;padding:18px 12px 8px}
+.modal .vs .avatar{width:56px;height:56px;font-size:22px}
+.modal .vs .who{font-size:12px;color:var(--muted);margin-top:4px;font-weight:600}
+.modal .big{font-size:28px;font-weight:800;letter-spacing:.04em}
+.modal .pts{color:var(--green-hi);font-weight:700;font-size:13px;padding-bottom:12px}
+.modal .acts{padding:0 16px 16px;display:grid;gap:8px}
+.modal .acts .btn-green{height:48px;font-size:17px}
+.btn-gray{height:40px;border-radius:6px;background:#3c3a37;font-weight:700;color:var(--text-2);box-shadow:inset 0 -3px 0 #2a2826}
+.btn-gray:hover{background:#4a4845}
+
+/* ---------- right panel ---------- */
+.panel{background:var(--panel);border-radius:8px;display:flex;flex-direction:column;height:calc(100vh - 32px);min-height:560px;max-height:900px;position:sticky;top:16px;overflow:hidden}
+.tabs{display:flex;background:var(--panel-2)}
+.tab{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:10px 4px 9px;color:var(--muted);font-weight:700;font-size:12.5px}
+.tab:hover{color:var(--text-2)}
+.tab.on{color:#fff;background:var(--panel)}
+.tab.on svg{color:#fff}
+.view{display:none;flex:1;min-height:0;flex-direction:column}
+.view.on{display:flex}
+.meta{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--line)}
+.meta .ic{width:36px;height:36px;border-radius:6px;background:#3c3a37;display:grid;place-items:center;flex:none}
+.meta b{display:block;font-size:14.5px}
+.meta span{font-size:12.5px;color:var(--muted)}
+.moves{flex:1;overflow:auto;min-height:120px}
+.moves::-webkit-scrollbar{width:8px}.moves::-webkit-scrollbar-thumb{background:#4b4946;border-radius:4px}
+.mrow{display:grid;grid-template-columns:42px 1fr 1fr;align-items:center;min-height:30px;font-size:13.5px}
+.mrow:nth-child(even){background:var(--row)}
+.mrow .n{color:var(--muted);padding-left:14px;font-weight:600}
+.mcell{display:flex;align-items:center;gap:6px;padding:3px 6px;margin:2px 6px 2px 0;border-radius:3px;font-weight:600;color:var(--text-2);min-width:0}
+.mcell.cur{background:#484644;color:#fff;border-bottom:2px solid #5e5c59}
+.mcell .md{display:inline-flex;gap:2px;flex:none}
+.mcell .md span{width:15px;height:15px;border-radius:3px;font-size:10px;font-weight:800;display:grid;place-items:center}
+.md.w span{background:#e8e6e3;color:#312e2b}.md.r span{background:#5b5855;color:#fff}
+.mcell .nt{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.empty{color:var(--muted);text-align:center;padding:28px 12px;font-size:13px}
+
+.controls{display:flex;gap:6px;padding:10px 12px 0;border-top:1px solid var(--line)}
+.ctl{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;height:38px;border-radius:6px;color:var(--text-2);font-weight:700;font-size:13px;background:transparent}
+.ctl:not(:disabled):hover{background:var(--hover);color:#fff}
+.ctl:disabled{color:#5d5b58}
+.ctl .k{font-size:11px;color:var(--faint);font-weight:600}
+.hint{padding:8px 14px 0;color:var(--muted);font-size:12.5px;font-weight:600;display:flex;align-items:center;gap:7px;min-height:26px}
+.hint .d{width:8px;height:8px;border-radius:50%;background:var(--green)}
+.hint.wait .d{background:#8b8987}
+.primary-wrap{padding:8px 12px 12px}
+.primary-wrap .btn-green{width:100%;height:54px;font-size:19px}
+.resign-wrap{position:relative;flex:1;display:flex}
+.popover{position:absolute;bottom:calc(100% + 8px);left:50%;transform:translateX(-50%);width:250px;background:#3c3a37;border-radius:8px;padding:6px;box-shadow:0 12px 30px rgba(0,0,0,.5);z-index:10}
+.popover .t{padding:6px 8px;font-size:12px;color:var(--muted);font-weight:700}
+.popover button{width:100%;display:flex;justify-content:space-between;align-items:center;padding:9px 10px;border-radius:5px;font-weight:700;text-align:left}
+.popover button:hover{background:#4d4b48}
+.popover button small{display:block;font-weight:400;color:var(--muted);font-size:11.5px}
+.popover .p{color:#ff8a80;font-size:12.5px}
+
+.chat{height:190px;display:flex;flex-direction:column;border-top:1px solid var(--line);background:var(--panel-2)}
+.msgs{flex:1;overflow:auto;padding:8px 12px;font-size:13px;display:flex;flex-direction:column;gap:3px}
+.msgs .sys{color:var(--muted);font-style:italic}
+.msgs .sys b{color:var(--text-2);font-style:normal}
+.msgs .m b{color:#fff}
+.msgs .m b.me{color:var(--green-hi)}
+.composer{display:flex;padding:0 8px 8px}
+.composer input{flex:1;min-width:0;height:36px;border-radius:5px;border:1px solid #3d3a37;background:#2b2926;color:#fff;padding:0 10px;font:inherit;outline:none}
+.composer input:focus{border-color:#6e6c6a}
+.composer input::placeholder{color:#7a7876}
+
+.scroll{flex:1;overflow:auto;padding:4px 0 12px}
+.sec{font-size:12px;font-weight:800;color:var(--muted);padding:14px 14px 6px;text-transform:uppercase;letter-spacing:.04em}
+.user{display:flex;align-items:center;gap:10px;padding:8px 14px}
+.user:hover{background:var(--row)}
+.user .avatar{width:34px;height:34px;font-size:14px}
+.user .nm{font-weight:700;display:flex;gap:6px;align-items:center}
+.user .nm .rt{color:var(--muted);font-weight:400}
+.user .sb{font-size:12px;color:var(--muted)}
+.user .grow{flex:1}
+.user .btn-gray{height:30px;padding:0 10px;font-size:12px}
+.on-dot{width:8px;height:8px;border-radius:50%;background:var(--green)}
+.themes{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:0 14px}
+.theme{border-radius:6px;padding:4px;background:#2b2926;border:2px solid transparent}
+.theme.on{border-color:var(--green)}
+.theme .pv{height:44px;border-radius:3px;display:flex;overflow:hidden;padding:0 3px;gap:2px}
+.theme .pv i{flex:1;clip-path:polygon(0 0,100% 0,50% 100%)}
+.theme span{display:block;font-size:11.5px;font-weight:700;margin-top:4px;color:var(--text-2)}
+.pieces{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:0 14px}
+.piece{display:flex;align-items:center;gap:8px;padding:8px;border-radius:6px;background:#2b2926;border:2px solid transparent;font-weight:700;font-size:13px}
+.piece.on{border-color:var(--green)}
+.piece i{width:20px;height:20px;border-radius:50%;display:inline-block;box-shadow:inset 0 0 0 2px rgba(0,0,0,.35)}
+.row{display:flex;align-items:center;gap:12px;padding:10px 14px}
+.row:hover{background:var(--row)}
+.row .t{flex:1}.row .t b{display:block;font-size:13.5px}.row .t span{font-size:12px;color:var(--muted)}
+.sw{width:40px;height:22px;border-radius:11px;background:#4b4946;position:relative;transition:.15s;flex:none}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:.15s}
+.sw.on{background:var(--green)}.sw.on::after{transform:translateX(18px)}
+
+.toast{position:fixed;left:50%;top:18px;transform:translate(-50%,-10px);opacity:0;padding:10px 16px;border-radius:6px;background:#fff;color:#312e2b;font-weight:700;
+  box-shadow:0 10px 30px rgba(0,0,0,.4);transition:.2s;pointer-events:none;z-index:50}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+
+/* ---------- responsive ---------- */
+@media (max-width:1300px){
+  .shell{grid-template-columns:64px minmax(0,1fr)}
+  .nav a span,.logo .word,.nav .small span{display:none}
+  .nav a,.logo{justify-content:center;padding-left:0;padding-right:0}
+  .main{grid-template-columns:minmax(0,1fr) 360px;gap:16px;padding:16px}
+}
+@media (max-width:1000px){
+  .shell{grid-template-columns:1fr}
+  .nav{position:static;height:auto;flex-direction:row;align-items:center;padding:0 8px}
+  .nav a{padding:12px 10px}
+  .nav .grow{flex:1}
+  .nav .hide-m{display:none}
+  .logo{padding:8px}
+  .logo .word{display:inline}
+  .main{grid-template-columns:1fr;padding:12px 16px}
+  .stage{width:100%}
+  .panel{position:static;height:640px}
+}
+@media (max-width:560px){
+  .clock{min-width:88px;font-size:20px;height:38px;padding:0 9px}
+  .clock svg{display:none}
+  .pbar{height:42px;gap:8px}
+  .avatar{width:34px;height:34px;font-size:15px}
+  .psub .pp{display:none}
+  .roll-btn{padding:7px 12px}
+  .board-note{font-size:10px}
+  .overlay{position:fixed;z-index:40;background:rgba(0,0,0,.6)}
+}
+</style>
+</head>
+<body data-pieces="ivory">
+<div class="shell">
+  <nav class="nav">
+    <div class="logo"><div class="logo-mark"><svg width="18" height="18" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="4" fill="#fff"/><circle cx="8.5" cy="8.5" r="1.9" fill="#45753c"/><circle cx="12" cy="12" r="1.9" fill="#45753c"/><circle cx="15.5" cy="15.5" r="1.9" fill="#45753c"/></svg></div><span class="word" style="color:#fff">tavla</span></div>
+    <a class="on"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l10.5-6.5z"/></svg><span>Play</span></a>
+    <a class="hide-m"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v16"/></svg><span>Lobby</span></a>
+    <a class="hide-m"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M7 4h10v4a5 5 0 0 1-10 0zM7 6H4a3 3 0 0 0 3 3M17 6h3a3 3 0 0 1-3 3M12 13v4M8 20h8"/></svg><span>Tournaments</span></a>
+    <a class="hide-m"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M2 8l10-5 10 5-10 5z"/><path d="M6 10v5c3 3 9 3 12 0v-5"/></svg><span>Learn</span></a>
+    <a class="hide-m"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0M16 4a4 4 0 0 1 0 8M22 21a7 7 0 0 0-4-6.3"/></svg><span>Social</span></a>
+    <div class="grow"></div>
+    <a class="small" id="soundBtn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg><span>Sound</span></a>
+    <a class="small hide-m"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"/></svg><span>Help</span></a>
+  </nav>
+
+  <main class="main">
+    <section class="stage">
+      <div class="pbar" id="p-r"></div>
+      <div class="board-wrap" id="boardWrap" data-theme="traditional">
+        <svg id="board" viewBox="0 0 1000 660" aria-label="Backgammon board"></svg>
+        <div class="board-note" id="note" hidden></div>
+        <div class="dice" id="dice"></div>
+        <div class="overlay" id="overlay" hidden></div>
+      </div>
+      <div class="pbar" id="p-w"></div>
+    </section>
+
+    <aside class="panel">
+      <nav class="tabs" id="tabs">
+        <button class="tab on" data-tab="game"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8.5" cy="8.5" r="1.2" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/></svg>Game</button>
+        <button class="tab" data-tab="players"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0M16 4a4 4 0 0 1 0 8M22 21a7 7 0 0 0-4-6.3"/></svg>Players</button>
+        <button class="tab" data-tab="settings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>Settings</button>
+      </nav>
+
+      <div class="view on" id="view-game">
+        <div class="meta">
+          <div class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#81b64c" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6"/></svg></div>
+          <div><b>Match to 12 · 5 min + 5s</b><span>Table #630 · Rated · 2 watching</span></div>
+        </div>
+        <div class="moves" id="moves"></div>
+        <div class="controls">
+          <button class="ctl" id="undoBtn" title="Undo (Z)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>Undo</button>
+          <button class="ctl" id="doubleBtn" title="Offer double"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="4" y="4" width="16" height="16" rx="3"/><text x="12" y="16" font-size="9" font-weight="800" text-anchor="middle" fill="currentColor" stroke="none" font-family="Segoe UI,Arial">×2</text></svg>Double</button>
+          <div class="resign-wrap">
+            <button class="ctl" id="resignBtn"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M5 22V3h1.8v1H19l-2.5 4.5L19 13H6.8v9z"/></svg>Resign</button>
+            <div class="popover" id="resignPop" hidden>
+              <div class="t">Resign this game?</div>
+              <button data-res="1"><span>Single game<small>Normal loss</small></span><span class="p" data-pts="1"></span></button>
+              <button data-res="2"><span>Gammon<small>No checkers borne off</small></span><span class="p" data-pts="2"></span></button>
+              <button data-res="3"><span>Backgammon<small>Checker in opponent's home</small></span><span class="p" data-pts="3"></span></button>
+            </div>
+          </div>
+        </div>
+        <div class="hint" id="hint"></div>
+        <div class="primary-wrap"><button class="btn-green" id="primaryBtn">Roll Dice</button></div>
+        <div class="chat">
+          <div class="msgs" id="msgs"></div>
+          <form class="composer" id="composer"><input id="chatInput" placeholder="Send a message…" autocomplete="off"></form>
+        </div>
+      </div>
+
+      <div class="view" id="view-players">
+        <div class="scroll">
+          <div class="sec">Playing</div>
+          <div class="user"><div class="avatar w">Y</div><div class="grow"><div class="nm">You <span class="rt">(1520)</span> <svg class="flag" width="16" height="11" viewBox="0 0 30 20"><rect width="30" height="20" rx="2" fill="#e30a17"/><circle cx="11" cy="10" r="5" fill="#fff"/><circle cx="12.3" cy="10" r="4" fill="#e30a17"/><path d="m16.5 10 4.2-1.4-2.6 3.6V7.8l2.6 3.6z" fill="#fff"/></svg></div><div class="sb">White · Table host</div></div><span class="on-dot"></span></div>
+          <div class="user"><div class="avatar r">M</div><div class="grow"><div class="nm">mws4380g <span class="rt">(1478)</span> <svg class="flag" width="16" height="11" viewBox="0 0 30 20"><rect width="30" height="20" rx="2" fill="#e30a17"/><circle cx="11" cy="10" r="5" fill="#fff"/><circle cx="12.3" cy="10" r="4" fill="#e30a17"/><path d="m16.5 10 4.2-1.4-2.6 3.6V7.8l2.6 3.6z" fill="#fff"/></svg></div><div class="sb">Dark</div></div><span class="on-dot"></span></div>
+          <div class="sec">Watching · 2</div>
+          <div class="user"><div class="avatar" style="background:#7b61a8">A</div><div class="grow"><div class="nm">ayse_k <span class="rt">(1602)</span></div><div class="sb">Spectator</div></div><button class="btn-gray">Challenge</button></div>
+          <div class="user"><div class="avatar" style="background:#3f7fb0">D</div><div class="grow"><div class="nm">deniz.tr <span class="rt">(1391)</span></div><div class="sb">Spectator</div></div><button class="btn-gray">Challenge</button></div>
+          <div class="sec">Host controls</div>
+          <div class="row"><div class="t"><b>Allow spectators</b><span>Others can watch this table</span></div><button class="sw on" data-local></button></div>
+          <div class="row"><div class="t"><b>Spectator chat</b><span>Spectators can send messages</span></div><button class="sw" data-local></button></div>
+          <div class="row"><div class="t"><b>Rated game</b><span>Results affect ratings</span></div><button class="sw on" data-local></button></div>
+        </div>
+      </div>
+
+      <div class="view" id="view-settings">
+        <div class="scroll">
+          <div class="sec">Board</div>
+          <div class="themes" id="themes"></div>
+          <div class="sec">Pieces</div>
+          <div class="pieces" id="pieces"></div>
+          <div class="sec">Gameplay</div>
+          <div class="row"><div class="t"><b>One-click moves</b><span>Left-click uses higher die, right-click lower</span></div><button class="sw" data-set="oneClick"></button></div>
+          <div class="row"><div class="t"><b>Show legal moves</b><span>Dots where the selected checker can go</span></div><button class="sw" data-set="hints"></button></div>
+          <div class="row"><div class="t"><b>Highlight last move</b><span>Mark the points used in the last turn</span></div><button class="sw" data-set="lastMove"></button></div>
+          <div class="row"><div class="t"><b>Auto-roll</b><span>Roll automatically on your turn</span></div><button class="sw" data-set="autoRoll"></button></div>
+          <div class="row"><div class="t"><b>Show pip count</b><span>Race totals next to player names</span></div><button class="sw" data-set="pips"></button></div>
+          <div class="row"><div class="t"><b>Sounds</b><span>Dice and checker sounds</span></div><button class="sw" data-set="sound"></button></div>
+        </div>
+      </div>
+    </aside>
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const $=s=>document.querySelector(s);
+const OPP={w:'r',r:'w'}, SIGN={w:1,r:-1};
+const NAME={w:'You',r:'mws4380g'}, RATING={w:1520,r:1478};
+const B={L:24,R:488,COL:68,BX:432,BW:56,TX:908,TW:68,Y0:22,Y1:638,PH:262,CR:29};
+const THEMES={traditional:'Traditional',brown:'Brown',blue:'Blue',gray:'Gray'};
+const PIECES={ivory:['Ivory & Ebony','#f2e7cf','#2b2623'],classic:['Classic','#fff','#3a3835'],ruby:['Ruby','#fff','#d8322a']};
+
+const S={
+  board:[],bar:{w:0,r:0},off:{w:0,r:0},turn:'w',phase:'roll',dice:[],selected:null,undo:[],
+  cube:{v:1,owner:null},score:{w:0,r:0},matchTo:12,clock:{w:300,r:300},history:[],curTurn:null,
+  rolling:false,noMoves:false,justMoved:null,hl:[],
+  settings:{oneClick:false,hints:true,lastMove:true,autoRoll:false,pips:true,sound:true},theme:'traditional',pieces:'ivory',
+  chat:[
+    {sys:true,text:'Tip: turn on <b>One-click moves</b> in Settings to move with left-click (higher die) or right-click (lower die).'},
+    {sys:true,text:'<b>mws4380g</b> (1478) joined the table'},
+    {sys:true,text:'You are the <b>table host</b>'},
+  ]
+};
+
+function setupBoard(){
+  S.board=Array(25).fill(0);
+  Object.assign(S.board,{24:2,13:5,8:3,6:5,1:-2,12:-5,17:-3,19:-5});
+  S.bar={w:0,r:0};S.off={w:0,r:0};S.cube={v:1,owner:null};S.dice=[];S.selected=null;S.undo=[];S.hl=[];
+  S.history=[];S.curTurn=null;S.turn='w';S.phase='roll';S.clock={w:300,r:300};S.justMoved=null;
+}
+
+/* ---------- rules ---------- */
+const own=(pl,p)=>S.board[p]*SIGN[pl]>0;
+function allHome(pl){
+  if(S.bar[pl])return false;
+  if(pl==='w'){for(let q=7;q<=24;q++)if(S.board[q]>0)return false}
+  else{for(let q=1;q<=18;q++)if(S.board[q]<0)return false}
+  return true;
+}
+const canLand=(pl,p)=>S.board[p]*SIGN[pl]>=-1;
+function dest(pl,from,d){
+  if(S.bar[pl]>0&&from!=='bar')return null;
+  if(from==='bar'){const p=pl==='w'?25-d:d;return canLand(pl,p)?p:null}
+  if(!own(pl,from))return null;
+  const t=pl==='w'?from-d:from+d;
+  if(t>=1&&t<=24)return canLand(pl,t)?t:null;
+  if(!allHome(pl))return null;
+  if(t===0||t===25)return 'off';
+  if(pl==='w'){for(let q=from+1;q<=6;q++)if(S.board[q]>0)return null}
+  else{for(let q=19;q<from;q++)if(S.board[q]<0)return null}
+  return 'off';
+}
+function targetsFrom(pl,from){
+  const out=[],seen=new Set();
+  S.dice.forEach((d,i)=>{if(d.used||seen.has(d.v))return;seen.add(d.v);const t=dest(pl,from,d.v);if(t!==null)out.push({from,dest:t,idx:i,v:d.v})});
+  return out;
+}
+function sources(pl){if(S.bar[pl])return['bar'];const a=[];for(let p=1;p<=24;p++)if(own(pl,p))a.push(p);return a}
+const allMoves=pl=>sources(pl).flatMap(f=>targetsFrom(pl,f));
+function pips(pl){let s=S.bar[pl]*25;for(let p=1;p<=24;p++){const n=S.board[p]*SIGN[pl];if(n>0)s+=n*(pl==='w'?p:25-p)}return s}
+const label=(pl,p)=>p==='bar'?'bar':p==='off'?'off':(pl==='w'?p:25-p);
+
+/* ---------- actions ---------- */
+function snapshot(){return{board:[...S.board],bar:{...S.bar},off:{...S.off},dice:S.dice.map(d=>({...d})),hl:[...S.hl]}}
+function doMove(pl,from,to,idx){
+  if(pl==='w')S.undo.push(snapshot());
+  const sg=SIGN[pl],op=OPP[pl];let hit=false;
+  if(from==='bar')S.bar[pl]--;else S.board[from]-=sg;
+  if(to==='off')S.off[pl]++;
+  else{if(S.board[to]===-sg){S.board[to]=0;S.bar[op]++;hit=true}S.board[to]+=sg}
+  S.dice[idx].used=true;
+  S.hl.push(from,to);
+  S.curTurn.moves.push(`${label(pl,from)}/${label(pl,to)}${hit?'*':''}`);
+  S.selected=null;S.justMoved=to;
+  sfx(hit?'hit':'move');
+  if(S.off[pl]===15){endGame(pl);return}
+  if(pl==='w'&&!allMoves('w').length)S.phase='confirm';
+  render();
+}
+function roll(cb){
+  const a=1+Math.floor(Math.random()*6),b=1+Math.floor(Math.random()*6);
+  S.dice=(a===b?[a,a,a,a]:[Math.max(a,b),Math.min(a,b)]).map(v=>({v,used:false}));
+  S.curTurn={pl:S.turn,dice:[a,b],moves:[]};S.history.push(S.curTurn);
+  S.rolling=true;S.justMoved=null;S.hl=[];sfx('dice');render();
+  setTimeout(()=>{S.rolling=false;cb()},650);
+}
+function playerRoll(){
+  if(S.turn!=='w'||S.phase!=='roll')return;
+  S.phase='rolling';
+  roll(()=>{S.phase='move';S.undo=[];S.noMoves=false;
+    if(!allMoves('w').length){S.phase='confirm';S.noMoves=true}
+    render()});
+}
+function confirmTurn(){if(S.turn==='w'&&S.phase==='confirm')endTurn()}
+function endTurn(){
+  if(S.phase==='over')return;
+  S.selected=null;S.undo=[];
+  if(S.clock[S.turn]>0)S.clock[S.turn]=Math.min(S.clock[S.turn]+5,599);
+  S.turn=OPP[S.turn];S.dice=[];
+  if(S.turn==='r'){S.phase='bot';render();setTimeout(()=>roll(()=>{render();setTimeout(botStep,600)}),700)}
+  else{S.phase='roll';render();if(S.settings.autoRoll)setTimeout(playerRoll,400)}
+}
+function botStep(){
+  if(S.phase==='over')return;
+  const ms=allMoves('r');
+  if(!ms.length){setTimeout(()=>{if(S.phase!=='over')endTurn()},500);return}
+  let best=null,bs=-1e9;
+  for(const m of ms){
+    let s=Math.random()*1.5;
+    if(m.dest==='off')s+=4;
+    else{const v=S.board[m.dest];if(v===1)s+=5;if(v===-1)s+=3;if(v===0)s-=1.2}
+    if(m.from!=='bar'&&S.board[m.from]===-2)s-=1.5;
+    if(s>bs){bs=s;best=m}
+  }
+  doMove('r',best.from,best.dest,best.idx);
+  if(S.phase!=='over')setTimeout(botStep,600);
+}
+function undo(){
+  if(S.turn!=='w'||!S.undo.length||!['move','confirm'].includes(S.phase))return;
+  Object.assign(S,S.undo.pop());S.curTurn.moves.pop();S.phase='move';S.selected=null;S.justMoved=null;sfx('move');render();
+}
+function onPoint(pt,button){
+  if(S.turn!=='w'||S.phase!=='move')return;
+  if(S.selected!==null){
+    const ts=targetsFrom('w',S.selected).filter(t=>t.dest===pt).sort((a,b)=>a.v-b.v);
+    if(ts.length){doMove('w',S.selected,ts[0].dest,ts[0].idx);return}
+  }
+  if(pt==='off'){S.selected=null;render();return}
+  const src=S.bar.w?'bar':pt;
+  if(src!=='bar'&&!own('w',src)){S.selected=null;render();return}
+  const ts=targetsFrom('w',src);
+  if(!ts.length){S.selected=null;toast('No legal move from that point');render();return}
+  if(S.settings.oneClick){
+    ts.sort((a,b)=>button==='right'?a.v-b.v:b.v-a.v);
+    doMove('w',src,ts[0].dest,ts[0].idx);return;
+  }
+  S.selected=S.selected===src?null:src;sfx('tick');render();
+}
+function endGame(winner,resignLevel){
+  const loser=OPP[winner];let mult=resignLevel||1;
+  if(!resignLevel&&S.off[loser]===0){
+    mult=2;let bg=S.bar[loser]>0;
+    for(let p=1;p<=24;p++){const n=S.board[p]*SIGN[loser];if(n>0&&(winner==='w'?p<=6:p>=19))bg=true}
+    if(bg)mult=3;
+  }
+  const pts=mult*S.cube.v;S.score[winner]+=pts;S.phase='over';S.selected=null;
+  const matchOver=S.score[winner]>=S.matchTo, won=winner==='w';
+  const kind=['','single game','gammon','backgammon'][mult];
+  const how=resignLevel?`by resignation · ${kind}`:`by ${kind}`;
+  const ov=$('#overlay');
+  ov.innerHTML=`<div class="modal"><header class="${won?'':'loss'}"><h2>${won?(matchOver?'Match Won!':'You Won!'):(matchOver?'Match Lost':'mws4380g Won')}</h2><p>${how}</p></header>
+    <div class="vs"><div><div class="avatar w">Y</div><div class="who">You</div></div><div class="big">${S.score.w} – ${S.score.r}</div><div><div class="avatar r">M</div><div class="who">mws4380g</div></div></div>
+    <div class="pts">${won?'+':'−'}${pts} point${pts>1?'s':''}${S.cube.v>1?` (cube ×${S.cube.v})`:''} · first to ${S.matchTo}</div>
+    <div class="acts"><button class="btn-green" id="nextBtn">${matchOver?'New Match':'Next Game'}</button><button class="btn-gray" id="reviewBtn">Review board</button></div></div>`;
+  ov.hidden=false;
+  $('#nextBtn').onclick=()=>nextGame(matchOver);
+  $('#reviewBtn').onclick=()=>{ov.hidden=true;S._pendingMatchOver=matchOver;render()};
+  sfx(won?'win':'hit');render();
+}
+function nextGame(matchOver){if(matchOver)S.score={w:0,r:0};$('#overlay').hidden=true;setupBoard();render()}
+
+/* ---------- rendering ---------- */
+function ptX(p){
+  if(p<=6)return B.R+(6-p)*B.COL+34;if(p<=12)return B.L+(12-p)*B.COL+34;
+  if(p<=18)return B.L+(p-13)*B.COL+34;return B.R+(p-19)*B.COL+34;
+}
+function stackY(p,i,n){const step=n>5?232/(n-1):58;return p>=13?B.Y0+B.CR+1+i*step:B.Y1-B.CR-1-i*step}
+const triPts=p=>{const x=ptX(p);return p>=13?`${x-33},${B.Y0} ${x+33},${B.Y0} ${x},${B.Y0+B.PH}`:`${x-33},${B.Y1} ${x+33},${B.Y1} ${x},${B.Y1-B.PH}`};
+function checker(pl,x,y,extra='',cls=''){
+  return `<g transform="translate(${x},${y})"><g class="${cls}">
+    <circle r="${B.CR}" fill="url(#g${pl})" stroke="var(--c${pl}-edge)" stroke-width="2"/>
+    <circle r="${B.CR-8}" fill="none" stroke="rgba(0,0,0,.16)" stroke-width="2"/>
+    <circle r="${B.CR-9.5}" fill="none" stroke="rgba(255,255,255,${pl==='w'?.8:.14})" stroke-width="1"/>
+    ${extra}</g></g>`;
+}
+function renderBoard(){
+  const myMove=S.turn==='w'&&S.phase==='move';
+  const targets=myMove&&S.selected!==null&&S.settings.hints?targetsFrom('w',S.selected):[];
+  const tset=new Set(targets.map(t=>t.dest));
+  let h=`<defs>
+    <radialGradient id="gw" cx=".38" cy=".32" r=".75"><stop offset="0" style="stop-color:var(--cw-1)"/><stop offset=".6" style="stop-color:var(--cw-2)"/><stop offset="1" style="stop-color:var(--cw-3)"/></radialGradient>
+    <radialGradient id="gr" cx=".38" cy=".32" r=".75"><stop offset="0" style="stop-color:var(--cr-1)"/><stop offset=".6" style="stop-color:var(--cr-2)"/><stop offset="1" style="stop-color:var(--cr-3)"/></radialGradient>
+    <filter id="wood" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency="0.006 0.16" numOctaves="3" seed="4"/>
+      <feColorMatrix values="0 0 0 0 .12  0 0 0 0 .06  0 0 0 0 .02  2.2 0 0 0 -.85"/></filter>
+    <filter id="leather" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".85" numOctaves="2" seed="9"/>
+      <feColorMatrix values="0 0 0 0 .35  0 0 0 0 .25  0 0 0 0 .12  .9 0 0 0 -.3"/></filter>
+    <linearGradient id="sheen" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".10"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".12"/></linearGradient>
+  </defs>
+  <rect width="1000" height="660" style="fill:var(--frame)"/>
+  <rect x="${B.BX}" y="${B.Y0}" width="${B.BW}" height="616" style="fill:var(--frame-2)"/>
+  <rect x="${B.TX}" y="${B.Y0}" width="${B.TW}" height="616" style="fill:var(--frame-2)"/>
+  <rect width="1000" height="660" filter="url(#wood)" style="opacity:var(--grain)"/>
+  <rect width="1000" height="660" fill="url(#sheen)" style="opacity:var(--grain)"/>
+  <rect x="${B.L}" y="${B.Y0}" width="408" height="616" style="fill:var(--felt-1)"/>
+  <rect x="${B.R}" y="${B.Y0}" width="408" height="616" style="fill:var(--felt-1)"/>
+  <rect x="${B.L}" y="${B.Y0}" width="408" height="616" filter="url(#leather)" style="opacity:var(--grain)"/>
+  <rect x="${B.R}" y="${B.Y0}" width="408" height="616" filter="url(#leather)" style="opacity:var(--grain)"/>
+  <line x1="${B.TX}" x2="${B.TX+B.TW}" y1="330" y2="330" stroke="rgba(0,0,0,.35)" stroke-width="2"/>`;
+  for(let p=1;p<=24;p++){
+    const x=ptX(p),top=p>=13;
+    h+=`<polygon points="${triPts(p)}" style="fill:var(${p%2?'--pa':'--pb'});stroke:var(--pt-edge);stroke-width:1.5;stroke-linejoin:round"/>`;
+    h+=`<text x="${x}" y="${top?B.Y0-7:B.Y1+16}" text-anchor="middle" font-size="11" font-weight="700" style="fill:var(--num)" font-family="Segoe UI,Arial,sans-serif">${p}</text>`;
+  }
+  // highlights: last move + selected
+  if(S.settings.lastMove)for(const p of new Set(S.hl))if(typeof p==='number')h+=`<polygon class="hl last" points="${triPts(p)}"/>`;
+  if(S.selected!==null){
+    if(S.selected==='bar')h+=`<rect class="hl" x="${B.BX}" y="330" width="${B.BW}" height="308"/>`;
+    else h+=`<polygon class="hl" points="${triPts(S.selected)}"/>`;
+  }
+  // checkers
+  for(let p=1;p<=24;p++){
+    const v=S.board[p];if(!v)continue;
+    const pl=v>0?'w':'r',n=Math.abs(v),x=ptX(p);
+    for(let i=0;i<n;i++){
+      const top=i===n-1;let extra='';
+      if(top&&n>5)extra=`<text y="6" text-anchor="middle" font-size="17" font-weight="800" font-family="Segoe UI,Arial,sans-serif" style="fill:var(--c${pl}-ink)">${n}</text>`;
+      h+=checker(pl,x,stackY(p,i,n),extra,top&&S.dragging===p?'lifted-ghost':top&&S.justMoved===p?'chk-enter':'');
+    }
+  }
+  // bar
+  const bx=B.BX+B.BW/2;
+  for(let i=0;i<S.bar.r;i++)h+=checker('r',bx,240-i*18);
+  for(let i=0;i<S.bar.w;i++)h+=checker('w',bx,420+i*18,'',i===S.bar.w-1&&S.dragging==='bar'?'lifted-ghost':'');
+  // cube
+  const cy=S.cube.owner==='w'?575:S.cube.owner==='r'?85:330;
+  h+=`<g transform="translate(${bx},${cy})"><rect x="-21" y="-19" width="42" height="42" rx="6" fill="#b9b7b4"/><rect x="-21" y="-21" width="42" height="42" rx="6" fill="#fff"/>
+    <text y="6" text-anchor="middle" font-size="${S.cube.v>=10?16:18}" font-weight="800" font-family="Segoe UI,Arial,sans-serif" fill="#312e2b">${S.cube.v===1?64:S.cube.v}</text></g>`;
+  // tray
+  for(let i=0;i<S.off.r;i++)h+=`<rect x="${B.TX+9}" y="${B.Y0+10+i*19}" width="${B.TW-18}" height="16" rx="3" fill="url(#gr)" stroke="var(--cr-edge)" stroke-width="1.5"/>`;
+  for(let i=0;i<S.off.w;i++)h+=`<rect x="${B.TX+9}" y="${B.Y1-26-i*19}" width="${B.TW-18}" height="16" rx="3" fill="url(#gw)" stroke="var(--cw-edge)" stroke-width="1.5"/>`;
+  // legal move markers
+  for(const t of tset){
+    if(t==='off'){h+=`<circle class="dot" cx="${B.TX+B.TW/2}" cy="${B.Y1-26-S.off.w*19-14}" r="13"/>`;continue}
+    const v=S.board[t],x=ptX(t);
+    if(v===-1)h+=`<circle class="capture" cx="${x}" cy="${stackY(t,0,1)}" r="${B.CR-2}"/>`;
+    else{const k=Math.max(0,v);h+=`<circle class="dot" cx="${x}" cy="${k<5?stackY(t,k,k+1):stackY(t,4,5)}" r="13"/>`}
+  }
+  // hit areas
+  for(let p=1;p<=24;p++){const x=ptX(p)-34,top=p>=13;h+=`<rect class="hit" data-pt="${p}" x="${x}" y="${top?B.Y0:330}" width="68" height="308"/>`}
+  h+=`<rect class="hit" data-pt="bar" x="${B.BX}" y="${B.Y0}" width="${B.BW}" height="616"/>`;
+  h+=`<rect class="hit" data-pt="off" x="${B.TX}" y="${B.Y0}" width="${B.TW}" height="616"/>`;
+  $('#board').innerHTML=h;
+}
+function dieHTML(v,pl,cls=''){
+  const on={1:[4],2:[0,8],3:[0,4,8],4:[0,2,6,8],5:[0,2,4,6,8],6:[0,2,3,5,6,8]}[v];
+  return `<div class="die ${pl} ${cls}">${Array.from({length:9},(_,i)=>`<i class="${on.includes(i)?'on':''}"></i>`).join('')}</div>`;
+}
+function renderDice(){
+  const el=$('#dice');
+  if(S.turn==='w'&&S.phase==='roll'&&$('#overlay').hidden){
+    el.innerHTML=`<button class="btn-green roll-btn" id="rollBtn">Roll Dice</button>`;$('#rollBtn').onclick=playerRoll;return;
+  }
+  if(!S.dice.length||S.phase==='over'){el.innerHTML='';return}
+  const d=S.dice,dbl=d.length===4,left=d.filter(x=>!x.used).length,dead=S.noMoves&&S.phase==='confirm'&&!S.rolling;
+  const faces=dbl?[{v:d[0].v,used:left<=2},{v:d[0].v,used:left===0}]:d;
+  el.innerHTML=faces.map(f=>dieHTML(f.v,S.turn,`${f.used||dead?'used':''} ${S.rolling?'rolling':''}`)).join('')+
+    (dbl&&left>0&&!dead&&!S.rolling?`<span style="font:800 clamp(10px,1.5cqw,15px)/1 var(--font);color:#fff;background:rgba(0,0,0,.6);border-radius:999px;padding:.45cqw .9cqw">×${left}</span>`:'');
+}
+function hintText(){
+  if(S.phase==='over')return['Game over',true];
+  if(S.turn==='r')return[`${NAME.r} is ${S.rolling?'rolling':'moving'}…`,true];
+  if(S.phase==='roll'||S.phase==='rolling')return['Your turn — roll the dice',false];
+  if(S.phase==='confirm')return[S.noMoves?'No legal moves this turn':'All moves played — confirm or undo',false];
+  if(S.bar.w)return['You have a checker on the bar — enter it first',false];
+  if(S.selected!==null)return['Choose a destination',false];
+  return[S.settings.oneClick?'Click a checker: left = higher die, right = lower':'Select a checker to move',false];
+}
+function renderHint(){
+  const [t,wait]=hintText();const el=$('#hint');el.className='hint'+(wait?' wait':'');el.innerHTML=`<span class="d"></span>${t}`;
+  const note=$('#note');note.hidden=!(S.turn==='w'&&S.phase==='confirm'&&S.noMoves);note.textContent='No legal moves';
+}
+const fmt=s=>`${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
+function offPile(pl){const n=S.off[pl];return n?`<span class="offpile ${pl}">${'<i></i>'.repeat(Math.min(n,15))}</span>`:''}
+function renderPlayer(pl){
+  const el=$('#p-'+pl),active=S.turn===pl&&S.phase!=='over';
+  el.innerHTML=`<div class="avatar ${pl}">${NAME[pl][0].toUpperCase()}</div>
+    <div class="pinfo"><div class="pline">${NAME[pl]} <span class="rt">(${RATING[pl]})</span><svg class="flag" width="16" height="11" viewBox="0 0 30 20"><rect width="30" height="20" rx="2" fill="#e30a17"/><circle cx="11" cy="10" r="5" fill="#fff"/><circle cx="12.3" cy="10" r="4" fill="#e30a17"/><path d="m16.5 10 4.2-1.4-2.6 3.6V7.8l2.6 3.6z" fill="#fff"/></svg>${S.cube.owner===pl?`<span class="badge">CUBE ×${S.cube.v}</span>`:''}</div>
+      <div class="psub">${S.settings.pips?`<span class="pp">Pips <b>${pips(pl)}</b></span>`:''}<span>Off <b>${S.off[pl]}</b></span>${offPile(pl)}</div></div>
+    <div class="score" title="Match score">${S.score[pl]}</div>
+    <div class="clock ${active?'active':''} ${S.clock[pl]<30?'low':''}" id="clock-${pl}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><circle cx="12" cy="12" r="9"/><path d="M12 12V6"/></svg><span>${fmt(S.clock[pl])}</span></div>`;
+}
+function renderPanel(){
+  const mine=S.turn==='w';
+  $('#undoBtn').disabled=!(mine&&S.undo.length&&['move','confirm'].includes(S.phase));
+  $('#doubleBtn').disabled=!(mine&&S.phase==='roll'&&S.cube.owner!=='r'&&S.cube.v<64);
+  $('#resignBtn').disabled=!(mine&&!['over','rolling'].includes(S.phase));
+  document.querySelectorAll('#resignPop [data-pts]').forEach(e=>{const v=e.dataset.pts*S.cube.v;e.textContent=`−${v} pt${v>1?'s':''}`});
+  const b=$('#primaryBtn');
+  const st= S.phase==='over'?['Next Game',false]
+    : !mine?['Waiting for opponent…',true]
+    : S.phase==='roll'?['Roll Dice',false]
+    : S.phase==='rolling'?['Rolling…',true]
+    : S.phase==='confirm'?[S.noMoves?'Pass Turn':'Confirm Move',false]
+    : ['Confirm Move',true];
+  b.textContent=st[0];b.disabled=st[1];
+}
+function renderMoves(){
+  const el=$('#moves');
+  if(!S.history.length){el.innerHTML='<div class="empty">No moves yet — roll the dice to start.</div>';return}
+  const rows=[];
+  for(let i=0;i<S.history.length;i+=2)rows.push([S.history[i],S.history[i+1]]);
+  const cell=t=>!t?'<div></div>':`<div class="mcell ${t===S.curTurn&&S.phase!=='over'?'cur':''}"><span class="md ${t.pl}"><span>${t.dice[0]}</span><span>${t.dice[1]}</span></span><span class="nt">${t.moves.join(' ')||(t===S.curTurn&&S.phase!=='over'?'…':'—')}</span></div>`;
+  el.innerHTML=rows.map((r,i)=>`<div class="mrow"><span class="n">${i+1}.</span>${cell(r[0])}${cell(r[1])}</div>`).join('');
+  el.scrollTop=el.scrollHeight;
+}
+function renderChat(){
+  const el=$('#msgs');
+  el.innerHTML=S.chat.map(m=>m.sys?`<div class="sys">${m.text}</div>`:`<div class="m"><b class="${m.me?'me':''}">${m.from}:</b> ${m.text}</div>`).join('');
+  el.scrollTop=el.scrollHeight;
+}
+function renderSettings(){
+  $('#themes').innerHTML=Object.entries(THEMES).map(([k,n])=>{
+    const tmp=$('#boardWrap').cloneNode(false);tmp.dataset.theme=k;document.body.appendChild(tmp);
+    const cs=getComputedStyle(tmp),v={};['--felt-1','--pa','--pb'].forEach(x=>v[x]=cs.getPropertyValue(x).trim());tmp.remove();
+    return `<button class="theme ${S.theme===k?'on':''}" data-theme="${k}"><div class="pv" style="background:${v['--felt-1']}">${[1,2,3,4].map(i=>`<i style="background:${i%2?v['--pa']:v['--pb']}"></i>`).join('')}</div><span>${n}</span></button>`}).join('');
+  $('#pieces').innerHTML=Object.entries(PIECES).map(([k,[n,a,b]])=>`<button class="piece ${S.pieces===k?'on':''}" data-pieces="${k}"><i style="background:${a}"></i><i style="background:${b};margin-left:-12px"></i>${n}</button>`).join('');
+  document.querySelectorAll('[data-set]').forEach(b=>b.classList.toggle('on',!!S.settings[b.dataset.set]));
+}
+function render(){renderBoard();renderDice();renderHint();renderPlayer('r');renderPlayer('w');renderPanel();renderMoves();}
+
+/* ---------- misc UI ---------- */
+let toastT;function toast(t){const e=$('#toast');e.textContent=t;e.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>e.classList.remove('show'),1700)}
+let actx;function sfx(kind){
+  if(!S.settings.sound)return;
+  try{actx=actx||new (window.AudioContext||window.webkitAudioContext)();
+    const n={move:[1,220],hit:[1,140],tick:[1,520],dice:[3,300],win:[3,660]}[kind];
+    for(let i=0;i<n[0];i++){const o=actx.createOscillator(),g=actx.createGain(),t=actx.currentTime+i*.07;
+      o.type=kind==='win'?'sine':'triangle';o.frequency.value=n[1]*(1+i*.25)+Math.random()*30;
+      g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(.12,t+.01);g.gain.exponentialRampToValueAtTime(.0001,t+.12);
+      o.connect(g).connect(actx.destination);o.start(t);o.stop(t+.14)}}catch(e){}
+}
+const svg=$('#board');
+const ptOf=e=>{const t=e.target.closest('[data-pt]');if(!t)return null;const v=t.dataset.pt;return isNaN(v)?v:+v};
+svg.addEventListener('contextmenu',e=>e.preventDefault());
+
+/* ---------- drag & drop (pointer events: mouse, pen and touch) ---------- */
+let drag=null; // {src, sx, sy, moved, was}
+function svgPt(e){const p=svg.createSVGPoint();p.x=e.clientX;p.y=e.clientY;return p.matrixTransform(svg.getScreenCTM().inverse())}
+function pointAt(x,y){
+  if(x>=B.TX&&x<=B.TX+B.TW)return 'off';
+  if(x>=B.BX&&x<B.BX+B.BW)return 'bar';
+  const top=y<330;
+  if(x>=B.L&&x<B.L+408){const c=Math.floor((x-B.L)/B.COL);return top?13+c:12-c}
+  if(x>=B.R&&x<B.R+408){const c=Math.floor((x-B.R)/B.COL);return top?19+c:6-c}
+  return null;
+}
+const legalDrop=(src,pt)=>pt!==null&&targetsFrom('w',src).some(t=>t.dest===pt);
+svg.addEventListener('pointerdown',e=>{
+  if(e.button!==0&&e.button!==2)return;
+  const v=svgPt(e),pt=pointAt(v.x,v.y);if(pt===null)return;
+  if(S.settings.oneClick||e.button===2){onPoint(pt,e.button===2?'right':'left');return}
+  if(S.turn!=='w'||S.phase!=='move')return;
+  if(S.selected!==null&&legalDrop(S.selected,pt)){onPoint(pt,'left');return}   // click-to-move
+  const src=S.bar.w?'bar':pt;
+  if(src!=='bar'&&!own('w',src)){S.selected=null;render();return}
+  if(!targetsFrom('w',src).length){S.selected=null;toast('No legal move from that point');render();return}
+  drag={src,sx:e.clientX,sy:e.clientY,moved:false,was:S.selected===src};
+  if(S.selected!==src){S.selected=src;sfx('tick');render()}
+  svg.setPointerCapture(e.pointerId);
+});
+svg.addEventListener('pointermove',e=>{
+  if(!drag)return;
+  if(!drag.moved){
+    if(Math.hypot(e.clientX-drag.sx,e.clientY-drag.sy)<5)return;
+    drag.moved=true;S.dragging=drag.src;svg.classList.add('dragging');renderBoard();
+    svg.insertAdjacentHTML('beforeend','<g id="dragHover" pointer-events="none"></g>'+checker('w',0,0).replace('<g transform','<g id="dragChk" pointer-events="none" transform'));
+  }
+  const v=svgPt(e),pt=pointAt(v.x,v.y);
+  $('#dragChk').setAttribute('transform',`translate(${v.x},${v.y}) scale(1.1)`);
+  $('#dragHover').innerHTML=!legalDrop(drag.src,pt)?'':pt==='off'
+    ?`<rect class="drop" x="${B.TX+3}" y="333" width="${B.TW-6}" height="302" rx="6"/>`
+    :`<polygon class="drop" points="${triPts(pt)}"/>`;
+});
+function endDrag(e,cancel){
+  if(!drag)return;const d=drag;drag=null;S.dragging=null;svg.classList.remove('dragging');
+  if(d.moved){
+    const v=cancel?null:svgPt(e),pt=v?pointAt(v.x,v.y):null;
+    const ts=targetsFrom('w',d.src).filter(t=>t.dest===pt).sort((a,b)=>a.v-b.v);
+    if(ts.length)doMove('w',d.src,ts[0].dest,ts[0].idx);
+    else render();                                   // snap back, keep selection
+  }else if(d.was){S.selected=null;render()}            // second click on same checker deselects
+}
+svg.addEventListener('pointerup',e=>endDrag(e,false));
+svg.addEventListener('pointercancel',e=>endDrag(e,true));
+$('#undoBtn').onclick=undo;
+$('#primaryBtn').onclick=()=>{
+  if(S.phase==='over'){nextGame(!!S._pendingMatchOver||S.score.w>=S.matchTo||S.score.r>=S.matchTo);return}
+  if(S.phase==='roll')playerRoll();else confirmTurn();
+};
+$('#doubleBtn').onclick=()=>{S.cube.v*=2;S.cube.owner='r';S.chat.push({sys:true,text:`You doubled — <b>mws4380g</b> accepted. Cube is now <b>×${S.cube.v}</b>`});renderChat();toast(`Double accepted · cube ×${S.cube.v}`);sfx('tick');render()};
+$('#resignBtn').onclick=e=>{e.stopPropagation();$('#resignPop').hidden=!$('#resignPop').hidden};
+document.addEventListener('click',e=>{if(!e.target.closest('.resign-wrap'))$('#resignPop').hidden=true});
+document.querySelectorAll('#resignPop [data-res]').forEach(b=>b.onclick=()=>{$('#resignPop').hidden=true;endGame('r',+b.dataset.res)});
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT')return;
+  if(e.code==='Space'){e.preventDefault();playerRoll()}
+  if(e.key==='z'||e.key==='Z')undo();
+  if(e.key==='Enter')confirmTurn();
+  if(e.key==='Escape'){S.selected=null;render()}
+});
+$('#tabs').addEventListener('click',e=>{const t=e.target.closest('.tab');if(!t)return;
+  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x===t));
+  document.querySelectorAll('.view').forEach(v=>v.classList.toggle('on',v.id==='view-'+t.dataset.tab))});
+$('#themes').addEventListener('click',e=>{const s=e.target.closest('.theme');if(!s)return;S.theme=s.dataset.theme;$('#boardWrap').dataset.theme=S.theme;renderSettings()});
+$('#pieces').addEventListener('click',e=>{const s=e.target.closest('.piece');if(!s)return;S.pieces=s.dataset.pieces;document.body.dataset.pieces=S.pieces;renderSettings();render()});
+document.querySelectorAll('[data-set]').forEach(b=>b.onclick=()=>{const k=b.dataset.set;S.settings[k]=!S.settings[k];renderSettings();render();if(k==='autoRoll'&&S.settings.autoRoll)playerRoll()});
+document.querySelectorAll('[data-local]').forEach(b=>b.onclick=()=>b.classList.toggle('on'));
+$('#soundBtn').onclick=()=>{S.settings.sound=!S.settings.sound;$('#soundBtn').style.opacity=S.settings.sound?1:.45;renderSettings();toast(S.settings.sound?'Sound on':'Sound off')};
+let replied=false;
+$('#composer').onsubmit=e=>{e.preventDefault();const v=$('#chatInput').value.trim();if(!v)return;$('#chatInput').value='';
+  S.chat.push({from:'You',me:true,text:v.replace(/</g,'&lt;')});renderChat();
+  if(!replied){replied=true;setTimeout(()=>{S.chat.push({from:'mws4380g',text:'gl hf'});renderChat()},1400)}};
+setInterval(()=>{
+  if(S.phase==='over')return;
+  const pl=S.turn;if(S.clock[pl]>0)S.clock[pl]--;
+  const c=$('#clock-'+pl);if(c){c.querySelector('span').textContent=fmt(S.clock[pl]);c.classList.toggle('low',S.clock[pl]<30)}
+},1000);
+
+setupBoard();renderSettings();renderChat();render();
+</script>
+</body>
+</html>

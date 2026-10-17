@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tavla — Table</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body data-pieces="ivory">
+<div class="shell">
+  <nav class="nav">
+    <a class="logo" href="/"><div class="logo-mark"><svg width="18" height="18" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="4" fill="#fff"/><circle cx="8.5" cy="8.5" r="1.9" fill="#45753c"/><circle cx="12" cy="12" r="1.9" fill="#45753c"/><circle cx="15.5" cy="15.5" r="1.9" fill="#45753c"/></svg></div><span class="word" style="color:#fff">tavla</span></a>
+    <a class="on" href="/"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l10.5-6.5z"/></svg><span>New table</span></a>
+    <a class="hide-m" id="copyNav"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M10 14a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 10a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg><span>Copy link</span></a>
+    <div class="grow"></div>
+    <a class="small" id="soundBtn"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"/></svg><span>Sound</span></a>
+  </nav>
+
+  <main class="main">
+    <section class="stage">
+      <div class="pbar" id="p-top"></div>
+      <div class="board-wrap" id="boardWrap" data-theme="traditional">
+        <svg id="board" viewBox="0 0 1000 660" aria-label="Backgammon board"></svg>
+        <div class="board-note" id="note" hidden></div>
+        <div class="dice" id="dice"></div>
+        <div class="overlay" id="overlay" hidden></div>
+      </div>
+      <div class="pbar" id="p-bottom"></div>
+    </section>
+
+    <aside class="panel">
+      <nav class="tabs" id="tabs">
+        <button class="tab on" data-tab="game"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8.5" cy="8.5" r="1.2" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/></svg>Game</button>
+        <button class="tab" data-tab="players"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="9" cy="8" r="4"/><path d="M2 21a7 7 0 0 1 14 0M16 4a4 4 0 0 1 0 8M22 21a7 7 0 0 0-4-6.3"/></svg>Players</button>
+        <button class="tab" data-tab="settings"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>Settings</button>
+      </nav>
+
+      <div class="view on" id="view-game">
+        <div class="meta">
+          <div class="ic"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#81b64c" stroke-width="2.4" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6"/></svg></div>
+          <div><b id="metaTitle">Loading…</b><span id="metaSub"></span></div>
+        </div>
+        <div class="moves" id="moves"></div>
+        <div class="controls">
+          <button class="ctl" id="undoBtn" title="Undo (Z)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>Undo</button>
+          <button class="ctl" id="doubleBtn" title="Offer double"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="4" y="4" width="16" height="16" rx="3"/><text x="12" y="16" font-size="9" font-weight="800" text-anchor="middle" fill="currentColor" stroke="none" font-family="Segoe UI,Arial">×2</text></svg>Double</button>
+          <div class="resign-wrap">
+            <button class="ctl" id="resignBtn"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M5 22V3h1.8v1H19l-2.5 4.5L19 13H6.8v9z"/></svg>Resign</button>
+            <div class="popover" id="resignPop" hidden>
+              <div class="t">Resign this game?</div>
+              <button data-res="1"><span>Single game<small>Normal loss</small></span><span class="p" data-pts="1"></span></button>
+              <button data-res="2"><span>Gammon<small>No checkers borne off</small></span><span class="p" data-pts="2"></span></button>
+              <button data-res="3"><span>Backgammon<small>Checker in opponent's home</small></span><span class="p" data-pts="3"></span></button>
+            </div>
+          </div>
+        </div>
+        <div class="hint" id="hint"></div>
+        <div class="primary-wrap"><button class="btn-green" id="primaryBtn" disabled>Waiting…</button></div>
+        <div class="chat">
+          <div class="msgs" id="msgs"></div>
+          <form class="composer" id="composer"><input id="chatInput" placeholder="Send a message…" autocomplete="off" maxlength="300"></form>
+        </div>
+      </div>
+
+      <div class="view" id="view-players"><div class="scroll" id="playersList"></div></div>
+
+      <div class="view" id="view-settings">
+        <div class="scroll">
+          <div class="sec">Board</div>
+          <div class="themes" id="themes"></div>
+          <div class="sec">Pieces</div>
+          <div class="pieces" id="pieces"></div>
+          <div class="sec">Gameplay</div>
+          <div class="row"><div class="t"><b>One-click moves</b><span>Left-click uses higher die, right-click lower</span></div><button class="sw" data-set="oneClick"></button></div>
+          <div class="row"><div class="t"><b>Show legal moves</b><span>Dots where the selected checker can go</span></div><button class="sw" data-set="hints"></button></div>
+          <div class="row"><div class="t"><b>Highlight last move</b><span>Mark the points used in the last turn</span></div><button class="sw" data-set="lastMove"></button></div>
+          <div class="row"><div class="t"><b>Auto-roll</b><span>Roll automatically on your turn</span></div><button class="sw" data-set="autoRoll"></button></div>
+          <div class="row"><div class="t"><b>Show pip count</b><span>Race totals next to player names</span></div><button class="sw" data-set="pips"></button></div>
+          <div class="row"><div class="t"><b>Sounds</b><span>Dice and checker sounds</span></div><button class="sw" data-set="sound"></button></div>
+        </div>
+      </div>
+    </aside>
+  </main>
+</div>
+<div class="toast" id="toast"></div>
+<div class="conn" id="conn" hidden>Connection lost — reconnecting…</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/shared/rules.js"></script>
+<script src="/table.js"></script>
+</body>
+</html>
