@@ -214,7 +214,7 @@ function renderPlayers() {
   const seatRow = pl => {
     const s = ST.seats[pl];
     if (!s) return `<div class="user"><div class="avatar ${pl}">?</div><div class="grow"><div class="nm">Empty seat</div><div class="sb">${COLOR_NAME[pl]} · share the link to invite</div></div></div>`;
-    return `<div class="user"><div class="avatar ${pl}">${esc(s.name[0].toUpperCase())}</div><div class="grow"><div class="nm">${esc(s.name)}${pl === me ? ' <span class="rt">(you)</span>' : ''}</div><div class="sb">${COLOR_NAME[pl]} · ${s.connected ? 'online' : 'offline'}</div></div>${s.connected ? '<span class="on-dot"></span>' : ''}</div>`;
+    return `<div class="user"><div class="avatar ${pl}">${esc(s.name[0].toUpperCase())}</div><div class="grow"><div class="nm">${esc(s.name)}${pl === me ? ' <span class="rt">(you)</span>' : ''}</div><div class="sb">${COLOR_NAME[pl]} · ${s.bot ? 'computer' : s.connected ? 'online' : 'offline'}</div></div>${s.connected ? '<span class="on-dot"></span>' : ''}</div>`;
   };
   $('#playersList').innerHTML = `<div class="sec">Playing</div>${seatRow('w')}${seatRow('r')}
     <div class="sec">Watching · ${ST.spectators.length}</div>

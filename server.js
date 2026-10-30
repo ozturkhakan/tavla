@@ -7,6 +7,7 @@ const express = require('express');
 const { Server } = require('socket.io');
 const R = require('./shared/rules');
 const games = require('./games');
+const bot = require('./bot');
 
 const PORT = process.env.PORT || 3000;
 const app = express();
@@ -52,7 +53,8 @@ function createRoom(opts = {}) {
       clockMin: pick(opts.clockMin, [0, 1, 3, 5, 10, 15], 5),
       inc: pick(opts.inc, [0, 3, 5, 10, 15], 5),
     },
-    seats: { w: null, r: null },          // {token, name, sockets:Set}
+    seats: { w: null, r: null },          // {token, name, sockets:Set, bot?}
+    bot: null,                            // { seat, level } when playing against the computer
     specs: new Map(),                     // socketId -> name
     score: { w: 0, r: 0 },
     matchOver: false,
@@ -63,6 +65,10 @@ function createRoom(opts = {}) {
     timer: null,
     emptySince: Date.now(),
   };
+  if (Object.hasOwn(bot.LEVELS, String(opts.bot))) {
+    room.bot = { seat: 'r', level: opts.bot, timer: null, plan: null };
+    room.seats.r = { token: null, name: `Computer (${bot.LEVEL_NAMES[opts.bot]})`, sockets: new Set(), bot: true };
+  }
   rooms.set(room.id, room);
   return room;
 }
@@ -106,6 +112,7 @@ function startGame(room) {
   do { a = R.die(); b = R.die(); } while (a === b);
   g.turn = a > b ? 'w' : 'r';
   room.g = g;
+  if (room.bot) { clearTimeout(room.bot.timer); room.bot.timer = null; room.bot.plan = null; }
   beginTurn(g, g.turn, a, b);
   sys(room, `Game ${room.gameNo} — opening roll: <b>${nameOf(room, 'w')}</b> ${a}, <b>${nameOf(room, 'r')}</b> ${b}. <b>${nameOf(room, g.turn)}</b> starts.`);
   runClock(room, g.turn);
@@ -152,9 +159,102 @@ function finishGame(room, winner, points, reason) {
   sys(room, `<b>${nameOf(room, winner)}</b> wins ${points ? `${points} point${points > 1 ? 's' : ''} ` : ''}by ${how}. Score ${room.score.w}–${room.score.r}.`);
 }
 
+/* ---------- player actions (from a socket or the computer) ---------- */
+// Each returns false when the action is not allowed right now.
+function doRoll(room, seat) {
+  const g = room.g;
+  if (seat !== g.turn || g.phase !== 'roll') return false;
+  g.hl = [];
+  beginTurn(g, seat, R.die(), R.die());
+  g.phase = 'move';
+  afterRoll(room);
+}
+
+function doMove(room, seat, from, to) {
+  const g = room.g;
+  if (seat !== g.turn || g.phase !== 'move' || g.noMoves) return false;
+  const okFrom = from === 'bar' || (Number.isInteger(from) && from >= 1 && from <= 24);
+  const okTo = to === 'off' || (Number.isInteger(to) && to >= 1 && to <= 24);
+  if (!okFrom || !okTo) return false;
+  const m = R.findMove(g, seat, from, to);
+  if (!m) return false;
+  g.undo.push(JSON.stringify({ board: g.board, bar: g.bar, off: g.off, dice: g.dice, hl: g.hl }));
+  const note = R.applyMove(g, seat, from, to, m.idx);
+  const h = g.history[g.history.length - 1];
+  h.moves.push(note);
+  h.plays.push([from, to, note.endsWith('*')]);
+  g.hl.push(from, to);
+  if (g.off[seat] === 15) {
+    const kind = R.winKind(g, seat);
+    finishGame(room, seat, kind * g.cube.v, ['', 'single', 'gammon', 'backgammon'][kind]);
+  } else if (!R.allMoves(g, seat).length) {
+    endTurn(room);
+  }
+}
+
+function doDouble(room, seat) {
+  const g = room.g;
+  if (seat !== g.turn || g.phase !== 'roll' || g.cube.owner === R.OPP[seat] || g.cube.v >= 64) return false;
+  g.phase = 'double';
+  g.pendingDouble = seat;
+  g.log.push({ type: 'double', pl: seat, cube: g.cube.v * 2 });
+  runClock(room, R.OPP[seat]);
+  sys(room, `<b>${nameOf(room, seat)}</b> offers a double to ×${g.cube.v * 2}`);
+}
+
+function doAnswer(room, seat, accept) {
+  const g = room.g;
+  if (g.phase !== 'double' || seat !== R.OPP[g.pendingDouble]) return false;
+  const offerer = g.pendingDouble;
+  g.log.push({ type: accept ? 'take' : 'drop', pl: seat });
+  if (accept) {
+    g.cube = { v: g.cube.v * 2, owner: seat };
+    g.phase = 'roll';
+    g.pendingDouble = null;
+    runClock(room, offerer);
+    sys(room, `<b>${nameOf(room, seat)}</b> accepts — cube is now ×${g.cube.v}`);
+  } else {
+    finishGame(room, offerer, g.cube.v, 'drop');
+  }
+}
+
+/* ---------- computer opponent ---------- */
+// Called after every broadcast: if the computer has something to do, do one step after a short pause.
+function botStep(room) {
+  const b = room.bot, g = room.g;
+  if (!b || b.timer || !g || g.phase === 'over') return;
+  const pl = b.seat;
+  let delay, step;
+  if (g.phase === 'double' && g.pendingDouble === R.OPP[pl]) {
+    delay = 1200;
+    step = () => doAnswer(room, pl, bot.takesDouble(g, pl, b.level));
+  } else if (g.turn !== pl) return;
+  else if (g.phase === 'roll') {
+    delay = 700;
+    step = () => {
+      if (bot.wantsDouble(g, pl, b.level, room.score, room.settings.matchTo) && doDouble(room, pl) !== false) return;
+      doRoll(room, pl);
+    };
+  } else if (g.phase === 'move' && !g.noMoves) {
+    delay = b.plan ? 550 : 900;
+    step = () => {
+      if (!b.plan) b.plan = bot.choosePlay(g, pl, b.level);
+      const mv = b.plan.shift();
+      if (!mv || doMove(room, pl, mv[0], mv[1]) === false) { b.plan = null; endTurn(room); return; }
+      if (g.turn !== pl || g.phase !== 'move') b.plan = null;
+    };
+  } else return;
+  b.timer = setTimeout(() => {
+    b.timer = null;
+    if (room.g !== g || g.phase === 'over') return;
+    step();
+    broadcast(room);
+  }, delay);
+}
+
 /* ---------- state sent to clients ---------- */
 function publicState(room) {
-  const seat = pl => room.seats[pl] && { name: room.seats[pl].name, connected: room.seats[pl].sockets.size > 0 };
+  const seat = pl => room.seats[pl] && { name: room.seats[pl].name, connected: !!room.seats[pl].bot || room.seats[pl].sockets.size > 0, bot: !!room.seats[pl].bot };
   const g = room.g && { ...room.g, undo: undefined, log: undefined, undoCount: room.g.undo.length };
   return {
     id: room.id, settings: room.settings, score: room.score, matchOver: room.matchOver, gameNo: room.gameNo,
@@ -163,7 +263,7 @@ function publicState(room) {
     clock: { w: remaining(room, 'w'), r: remaining(room, 'r'), running: room.clock.running },
   };
 }
-const broadcast = room => io.to(room.id).emit('state', publicState(room));
+const broadcast = room => { io.to(room.id).emit('state', publicState(room)); botStep(room); };
 
 /* ---------- sockets ---------- */
 io.on('connection', socket => {
@@ -209,34 +309,8 @@ io.on('connection', socket => {
     broadcast(room);
   });
 
-  socket.on('roll', act(({ room, seat, g }) => {
-    if (seat !== g.turn || g.phase !== 'roll') return false;
-    g.hl = [];
-    beginTurn(g, seat, R.die(), R.die());
-    g.phase = 'move';
-    afterRoll(room);
-  }));
-
-  socket.on('move', act(({ room, seat, g }, { from, to } = {}) => {
-    if (seat !== g.turn || g.phase !== 'move' || g.noMoves) return false;
-    const okFrom = from === 'bar' || (Number.isInteger(from) && from >= 1 && from <= 24);
-    const okTo = to === 'off' || (Number.isInteger(to) && to >= 1 && to <= 24);
-    if (!okFrom || !okTo) return false;
-    const m = R.findMove(g, seat, from, to);
-    if (!m) return false;
-    g.undo.push(JSON.stringify({ board: g.board, bar: g.bar, off: g.off, dice: g.dice, hl: g.hl }));
-    const note = R.applyMove(g, seat, from, to, m.idx);
-    const h = g.history[g.history.length - 1];
-    h.moves.push(note);
-    h.plays.push([from, to, note.endsWith('*')]);
-    g.hl.push(from, to);
-    if (g.off[seat] === 15) {
-      const kind = R.winKind(g, seat);
-      finishGame(room, seat, kind * g.cube.v, ['', 'single', 'gammon', 'backgammon'][kind]);
-    } else if (!R.allMoves(g, seat).length) {
-      endTurn(room);
-    }
-  }));
+  socket.on('roll', act(({ room, seat }) => doRoll(room, seat)));
+  socket.on('move', act(({ room, seat }, { from, to } = {}) => doMove(room, seat, from, to)));
 
   socket.on('undo', act(({ seat, g }) => {
     if (seat !== g.turn || g.phase !== 'move' || !g.undo.length) return false;
@@ -246,29 +320,8 @@ io.on('connection', socket => {
     h.plays.pop();
   }));
 
-  socket.on('double', act(({ room, seat, g }) => {
-    if (seat !== g.turn || g.phase !== 'roll' || g.cube.owner === R.OPP[seat] || g.cube.v >= 64) return false;
-    g.phase = 'double';
-    g.pendingDouble = seat;
-    g.log.push({ type: 'double', pl: seat, cube: g.cube.v * 2 });
-    runClock(room, R.OPP[seat]);
-    sys(room, `<b>${nameOf(room, seat)}</b> offers a double to ×${g.cube.v * 2}`);
-  }));
-
-  socket.on('answerDouble', act(({ room, seat, g }, accept) => {
-    if (g.phase !== 'double' || seat !== R.OPP[g.pendingDouble]) return false;
-    const offerer = g.pendingDouble;
-    g.log.push({ type: accept ? 'take' : 'drop', pl: seat });
-    if (accept) {
-      g.cube = { v: g.cube.v * 2, owner: seat };
-      g.phase = 'roll';
-      g.pendingDouble = null;
-      runClock(room, offerer);
-      sys(room, `<b>${nameOf(room, seat)}</b> accepts — cube is now ×${g.cube.v}`);
-    } else {
-      finishGame(room, offerer, g.cube.v, 'drop');
-    }
-  }));
+  socket.on('double', act(({ room, seat }) => doDouble(room, seat)));
+  socket.on('answerDouble', act(({ room, seat }, accept) => doAnswer(room, seat, !!accept)));
 
   socket.on('resign', act(({ room, seat, g }, level) => {
     level = [1, 2, 3].includes(level) ? level : 1;
